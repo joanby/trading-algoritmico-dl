@@ -10,6 +10,8 @@
 > de su respuesta con precios inventados. **Tus números saldrán distintos** a los del vídeo, porque los
 > precios reales han seguido moviéndose.
 > Sin ejecutar: `ES_DL_Capítulo_08_ANN_reg_app`, `ES_DL_Capítulo_08_RNN_cl_app`, `MT5` (MetaTrader 5 solo funciona en Windows, con el terminal y una cuenta).
+> En noviembre de 2026 se corrigieron además errores del propio código del curso, que dan resultados
+> distintos a los del vídeo: ver [Correcciones de errores del curso](#correcciones-de-errores-del-curso-noviembre-de-2026).
 
 ## Cómo usarla
 
@@ -81,3 +83,49 @@ Algunas celdas dan un error a propósito para explicar algo (por ejemplo, qué e
   cargan esos pesos para predecir se compilan con `tensorflow.keras.optimizers.legacy.Adam()` en vez de
   `"adam"`. Para predecir el optimizador no interviene; donde el curso entrena, sigue siendo `"adam"`.
   Las aplicaciones del capítulo 8 usan MetaTrader 5 y **no se han ejecutado** (solo Windows).
+
+## Correcciones de errores del curso (noviembre de 2026)
+
+Aquí no ha cambiado ninguna librería: son fallos del código del curso que enseñaban algo mal. **Lo que
+verás en pantalla será distinto del vídeo**, y está explicado en cada punto. Comprobado: el capítulo 6 se han
+vuelto a ejecutar enteros con `requirements.txt` y la réplica de Yahoo de arriba (todos sin error). Las
+cifras de antes y después salen de Yahoo Finance real, descargado el 19 de noviembre de 2026. Los notebooks de MetaTrader 5 (capítulo 8) **no se han ejecutado** (solo Windows).
+Los notebooks conservan la salida guardada del vídeo: en las celdas de estos puntos, lo guardado es el
+resultado antiguo (por ejemplo, `Alpha: 0.9 %`); al ejecutarlas, sale el nuevo.
+
+### 1. Alfa (capítulo 6)
+
+**En el vídeo:** alfa se calcula como `252 * mean * (1-beta)` (celda 13) y, dentro de `BackTest`, como
+`serie.mean() - beta*serie.mean()`. Sale un 0,9 % para Google.
+
+**Qué estaba mal:** las dos expresiones son el retorno medio de la cartera multiplicado por (1 − beta).
+Ahí no aparece el mercado, así que no dicen si la cartera lo ha hecho mejor que él, y el signo puede salir
+al revés que el real. La fórmula escrita en la celda 12 tenía el mismo fallo.
+
+**Ahora:** es el alfa de Jensen, con tipo libre de riesgo cero: el retorno medio de la cartera menos beta
+por el retorno medio del SP500, anualizado igual que antes.
+
+```python
+alpha = (252 * (mean - beta*val["SP500"].mean()))*100                        # celda 13
+alpha = annualiazed_scalar * (serie.mean() - beta*val["SP500"].mean())       # BackTest
+```
+
+La fórmula de la celda 12 pasa a ser $r_{PF} - r_f - \beta (r_M - r_f)$. `BackTest` se llama igual y
+recibe lo mismo.
+
+**Qué cambia en los números** (alfa anual):
+
+| | Antes | Ahora |
+|---|---|---|
+| Google 2004–2020 (beta 0,965), celda 13 | 0,9 % | **17,2 %** |
+| Red neuronal con los pesos del repositorio (beta −0,03), celda 23 | −7,466 % | −6,96 % |
+
+Alfa no mide seguridad: es la rentabilidad que se obtiene por encima de la que tocaría por el riesgo de
+mercado asumido (beta). Con beta cercana a 0 apenas cambia; con beta cercana a 1, el cálculo antiguo daba
+casi 0 fuera cual fuera el alfa real.
+
+### 2. Capítulo 8 (MetaTrader 5): avisos (sin ejecutar)
+
+- **Avisos, sin cambiar el código:** hay un comentario en `filling_mode - 1` (en `MT5.py`). `filling_mode` es una máscara de bits del broker: restarle 1 solo acierta si el
+  símbolo admite un único modo de ejecución, y si no, la orden puede rechazarse. Opera
+  siempre en una **cuenta demo**, y empieza con `live = False`.
