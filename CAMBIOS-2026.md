@@ -129,3 +129,59 @@ casi 0 fuera cual fuera el alfa real.
 - **Avisos, sin cambiar el código:** hay un comentario en `filling_mode - 1` (en `MT5.py`). `filling_mode` es una máscara de bits del broker: restarle 1 solo acierta si el
   símbolo admite un único modo de ejecución, y si no, la orden puede rechazarse. Opera
   siempre en una **cuenta demo**, y empieza con `live = False`.
+- **Robot de la red profunda (`ES_DL_Capítulo_08_ANN_reg_app`), avisos en el código, sin cambiarlo.**
+  Las tres redes (`ANN n17`, `n38` y `n66`) se entrenaron en el capítulo 5 con `CADGBP=X`, y el robot
+  opera `GBPCAD`, que es el par inverso: cuando uno sube, el otro baja. Con un MetaTrader 5 simulado
+  (velas diarias de Yahoo), en los últimos 120 días el robot da la misma señal con `GBPCAD` que con
+  `CADGBP` en 61 días y la contraria en 59: lo que opera no tiene relación con lo que se entrenó. Además,
+  de las 70 velas que descarga, tras la media de 60 quedan 11 filas, y `feature_engineering` vuelve a
+  ajustar el `StandardScaler` solo con ellas, en vez de usar el escalado del entrenamiento: las redes
+  reciben valores en otra escala (predicen retornos de hasta ±20 % diario). Y `weekday() not in (5,1)`
+  deja fuera sábado y martes, no el fin de semana. Si lo quieres usar de verdad, entrena las redes con el
+  par que vas a operar y guarda su escalador con `dump` para cargarlo aquí con `load` (los dos ya están
+  importados).
+
+### 3. El robot de la red recurrente compraba siempre (`ES_DL_Capítulo_08_RNN_cl_app`)
+
+**En el vídeo:** las tres redes recurrentes votan y se compra si al menos dos dicen que el precio sube
+(«decisión de voto por mayoría»).
+
+**Qué estaba mal:** cada voto se calculaba con `np.where(rnn.predict(X)==0, -1, 1)`. La red acaba en una
+sigmoide, que da una probabilidad entre 0 y 1 y nunca exactamente 0, así que los tres votos eran siempre
++1 y el robot **compraba todos los días**, dijeran lo que dijeran las redes.
+
+**Ahora:** el voto corta en 0,5, como el capítulo 7 (`np.where(prediction < 0.5, -1, 1)`): por debajo,
+vende; por encima, compra.
+
+```python
+pr1 = np.where(rnn_1.predict(X)<0.5, -1,1)
+```
+
+**Comprobado** con un MetaTrader 5 simulado (velas diarias de EURUSD de Yahoo; las órdenes no salen a
+ningún broker), reconstruyendo la decisión de cada día con los pesos del repositorio, en los 250 días
+hasta el 19-nov-2026: antes, 250 compras (ninguna de las 750 probabilidades vale 0; van de 0,488 a 0,572);
+ahora, 240 compras y 10 ventas. Las redes casi siempre dan algo más de 0,5, así que el robot sigue
+comprando casi todos los días: es lo que saben hacer estas redes (ver «Erratas del vídeo»), no un fallo
+del robot.
+
+En el mismo robot, sin cambiar el código: las redes se entrenaron con BTC-USD y se aplican a EURUSD (el
+vídeo lo dice: la cuenta demo no tenía BTCUSD), y el escalado se ajusta con las velas descargadas en el
+momento, no con el del entrenamiento.
+
+## Erratas del vídeo (el código no cambia)
+
+- **Pérdida no es acierto (capítulo 7).** El modelo se compila solo con `loss="binary_crossentropy"`, y
+  el vídeo lee la pérdida de 0,69 como «acierta el 68, 69 % de los casos». No es un porcentaje de
+  aciertos: 0,693 es ln 2, justo la pérdida de decir siempre «50 %», es decir, de no saber nada. La
+  entropía cruzada tampoco «crece cuando acierta»: baja, y se busca el valor más bajo. Con los pesos del
+  repositorio (`RNN n3`, `n31` y `n34`) y BTC-USD de Yahoo real, las probabilidades van de 0,48 a 0,61, la
+  pérdida en el test es de 0,693 a 0,695 y el acierto del 50–51 %.
+- **`RNN(...)` entrena una sola época (capítulo 7).** `epochs=1`, así que la parada temprana no llega a
+  actuar y las redes del banco tienen una sola pasada por los datos. Es lo que se ve en el vídeo (una sola
+  línea de entrenamiento por red, unos 10 segundos), por eso no se ha cambiado.
+- **La «validación final» no es nueva para la red (capítulos 5 y 7).** El último tramo (el 5 % en
+  `ANN`, el 10 % en `RNN`) va dentro de `validation_data`, y en el capítulo 5 la parada temprana lo usa
+  para decidir cuándo parar. No se entrena con él, pero no son datos que la red no haya visto nunca, como
+  dice el vídeo.
+- **Capas de `ANN` (capítulo 5).** Con `nb_hidden_layer = 3` salen capas de 25, 25 y 12 neuronas, no de
+  25, 12 y 8: el bucle empieza en `i = 1`, así que la segunda capa vuelve a dividir entre 1.
